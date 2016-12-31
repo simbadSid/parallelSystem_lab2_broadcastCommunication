@@ -1,17 +1,22 @@
-EXEC=sequential_julia
 
 all: $(EXEC)
-CC_sequential=gcc
-CC_parallel=smpicc
-RUN_sequential=./
-RUN_parallel=smpirun
+CC=smpicc
+RUN=smpirun
 BINDIR=bin/
 SRCDIR=src/
-OUTPUT_FILE_NAME_SEQUENTIAL=data/output/pictureSeqential.bmp
-OUTPUT_FILE_NAME_PARALLEL=data/output/pictureParallel.bmp
+INPUT_FILE_PATH=data/input/
 CFLAGS  = -g -Wall -Werror -MP -MMD -DCONFIG_DEBUG
 LDFLAGS  = -lm
 
+HOST_FILE_NAME=hostfile_$(NBR_PROCESS).txt
+HOST_FILE=$(INPUT_FILE_PATH)$(HOST_FILE_NAME)
+PLATFORM_FILE_NAME=ring_$(NBR_PROCESS).xml
+PLATFORM_FILE=$(INPUT_FILE_PATH)PLATFORM_FILE_NAME
+
+
+
+
+NBR_PROCESS=50
 
 
 
@@ -19,55 +24,36 @@ LDFLAGS  = -lm
 #-----------------------------------------------------------------------------------------------------------
 # ----------------------------------------------- Executions -----------------------------------------------
 #-----------------------------------------------------------------------------------------------------------
-PICTURE_DIMENSION_1D=1002
-PICTURE_DIMENSION_2D=1000
-NBR_PROCESS_1D=5
-NBR_PROCESS_2D=9#36
-HOST_FILE=data/input/simple_cluster_hostfile.txt
-PLATFORM=data/input/simple_cluster.xml
+exec_naive_bcast:		$(BINDIR)bcast_skeleton exec_prepareData
+						$(RUN) --cfg=smpi/bcast:mpich -np $(NBR_PROCESS) -hostfile $(HOST_FILE) -platform $(PLATFORM_FILE) $(BINDIR)bcast_skeleton naive_bcast
 
 
+exec_ring_bcast:		$(BINDIR)bcast_skeleton exec_prepareData
+						$(RUN) --cfg=smpi/bcast:mpich -np $(NBR_PROCESS) -hostfile $(HOST_FILE) -platform $(PLATFORM_FILE) $(BINDIR)bcast_skeleton ring_bcast
 
-exec_sequential_julia:	sequential_julia
-						$(RUN_sequential)sequential_julia $(PICTURE_DIMENSION) ;\
-						eog $(OUTPUT_FILE_NAME_SEQUENTIAL)
 
-exec_1D_parallel_julia:	1D_parallel_julia
-						$(RUN_parallel) -np $(NBR_PROCESS_1D) -hostfile $(HOST_FILE) -platform $(PLATFORM) $(BINDIR)1D_parallel_julia $(PICTURE_DIMENSION_1D) ;\
-						eog $(OUTPUT_FILE_NAME_PARALLEL)
+exec_default_bcast:		$(BINDIR)bcast_skeleton exec_prepareData
+						$(RUN) --cfg=smpi/bcast:mpich -np $(NBR_PROCESS) -hostfile $(HOST_FILE) -platform $(PLATFORM_FILE) $(BINDIR)bcast_skeleton default_bcast
 
-exec_2D_parallel_julia:	2D_parallel_julia
-						$(RUN_parallel) -np $(NBR_PROCESS_2D) -hostfile $(HOST_FILE) -platform $(PLATFORM) $(BINDIR)2D_parallel_julia $(PICTURE_DIMENSION_2D) ;\
-						eog $(OUTPUT_FILE_NAME_PARALLEL)
+
+exec_prepareData:
+						python $(SRCDIR)generate_xml_ring_and_hostfile.py $(NBR_PROCESS); \
+						mv $(HOST_FILE_NAME) $(HOST_FILE); \
+						mv $(PLATFORM_FILE_NAME) $(PLATFORM_FILE)
 
 
 #-----------------------------------------------------------------------------------------------------------
 # ----------------------------------------------- Executable -----------------------------------------------
 #-----------------------------------------------------------------------------------------------------------
-sequential_julia:				$(BINDIR)sequential_julia.o $(BINDIR)tools.o
-								$(CC_sequential) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-
-1D_parallel_julia:				$(BINDIR)1D_parallel_julia.o $(BINDIR)tools.o
-								$(CC_parallel) -o $(BINDIR)$@ $^  $(LDFLAGS)
-
-2D_parallel_julia:				$(BINDIR)2D_parallel_julia.o $(BINDIR)tools.o
-								$(CC_parallel) -o $(BINDIR)$@ $^  $(LDFLAGS)
+$(BINDIR)bcast_skeleton:$(BINDIR)bcast_skeleton.o $(BINDIR)bcast_solution.o $(BINDIR)tools.o
+						$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 
 #-----------------------------------------------------------------------------------------------------------
 # ----------------------------------------------- Modules  -------------------------------------------------
 #-----------------------------------------------------------------------------------------------------------
-$(BINDIR)sequential_julia.o:	$(SRCDIR)sequential_julia.c
-								$(CC) $(CFLAGS) -c -o $@ $^
-
-$(BINDIR)1D_parallel_julia.o:	$(SRCDIR)1D_parallel_julia.c
-								$(CC_parallel) -O3 -c -o $@ $^
-
-$(BINDIR)2D_parallel_julia.o:	$(SRCDIR)2D_parallel_julia.c
-								$(CC_parallel) -O3 -c -o $@ $^
-
-$(BINDIR)tools.o:				$(SRCDIR)tools.c
-								$(CC) $(CFLAGS) -c -o $@ $^
+$(BINDIR)%.o:			$(SRCDIR)%.c
+						$(CC) -O3 -c -o $@ $^
 
 
 
@@ -78,4 +64,4 @@ $(BINDIR)tools.o:				$(SRCDIR)tools.c
 clean:
 	rm -f $(BINDIR)*
 mrproper: clean
-	rm -rf $(EXEC) $(OUTPUT_FILE_NAME_SEQUENTIAL) $(OUTPUT_FILE_NAME_PARALLEL)
+	rm -rf $(HOST_FILE) $(PLATFORM)
